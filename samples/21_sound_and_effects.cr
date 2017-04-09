@@ -2,16 +2,23 @@ require "../src/sdl"
 require "../src/image"
 require "../src/mixer"
 
+alias Mix = SDL::Mixer
+
 SDL.init(SDL::Init::VIDEO | SDL::Init::AUDIO); at_exit { SDL.quit }
-SDL::Mixer.init(SDL::Mixer::Init::MP3); at_exit { SDL::Mixer.quit }
-SDL::Mixer.open
+Mix.init(Mix::Init::MP3); at_exit { Mix.quit }
+Mix.open
 
-music = SDL::Mixer.load_music(File.join(__DIR__, "data", "beat.wav"))
+DATA_DIR = File.join(__DIR__, "data")
 
-sounds = {} of String => LibMixer::Mix_Chunk*
+music_file = File.join(DATA_DIR, "beat.wav")
+music = Mix::Music.new music_file
+
+samples = {} of String => Mix::Sample
+channels = {} of String => Mix::Channel
 names = %w(high medium low scratch)
-names.each do |name|
-  sounds[name] = SDL::Mixer.load_wav(File.join(__DIR__, "data", "#{name}.wav"))
+names.each_with_index do |name, idx|
+  samples[name] = Mix::Sample.new(File.join(DATA_DIR, "#{name}.wav"))
+  channels[name] = Mix::Channel.new(idx)
 end
 
 window = SDL::Window.new("SDL Tutorial", 640, 480)
@@ -19,33 +26,42 @@ png = SDL::IMG.load(File.join(__DIR__, "data", "prompt.png"))
 png = png.convert(window.surface)
 activekey = [] of LibSDL::Keycode
 
+puts "Q to quit..."
+
 loop do
   case event = SDL::Event.wait
   when SDL::Event::Quit
-    #SDL::Mixer.unload_music(music)
+    music.stop
+    music.free
+    Mix.close
     break
   when SDL::Event::Keyboard
     key = event.sym
     unless activekey.includes? key
       case key
       when .key_1?
-        SDL::Mixer.play_wav(sounds["high"])
+        Mix::Channel.play samples["high"] # allocate any free channel
       when .key_2?
-        SDL::Mixer.play_wav(sounds["medium"])
+        channels["medium"].play samples["medium"] # play through specific channel
       when .key_3?
-        SDL::Mixer.play_wav(sounds["low"])
+        channels["low"].play samples["low"]
       when .key_4?
-        SDL::Mixer.play_wav(sounds["scratch"])
+        channels["scratch"].play samples["scratch"]
       when .key_9?
-        if SDL::Mixer.music_paused?
-          SDL::Mixer.resume_playing_music
-        elsif SDL::Mixer.music_playing?
-          SDL::Mixer.pause_music
+        if music.paused?
+          music.resume
+        elsif music.playing?
+          music.pause
         else
-          SDL::Mixer.play_music(music)
+          music.play
         end
       when .key_0?
-        SDL::Mixer.stop_music
+        music.resume if music.paused?
+        music.stop
+      when LibSDL::Keycode::Q
+        music.free
+        Mix.close
+        break
       end
       activekey << key
     end
